@@ -750,7 +750,6 @@ static uint16_t menu_num_rows(MenuLayer *ml, uint16_t section, void *ctx) {
 }
 
 static int16_t menu_cell_height(MenuLayer *ml, MenuIndex *idx, void *ctx) {
-  // 40px rows → all 5 timers visible simultaneously without scrolling
   return 40;
 }
 
@@ -772,7 +771,7 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
   graphics_fill_rect(gctx, bounds, 0, GCornerNone);
 
   GFont font_main = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
-  GFont font_tiny = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  GFont font_tiny = fonts_get_system_font(FONT_KEY_GOTHIC_18);
 
   // ── Name (left, large) ──────────────────────────────────────
   graphics_context_set_text_color(gctx, cfg->configured ? fg : dim);
@@ -781,7 +780,6 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   // ── State icon (centred at x=97, y=mid_y) ────────────────────
-  // Icon area: x=90 to x=104 (14px), vertically centred
   if (!cfg->configured) {
     graphics_context_set_stroke_color(gctx, dim);
     graphics_context_set_stroke_width(gctx, 2);
@@ -827,7 +825,7 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
     }
     graphics_context_set_text_color(gctx, dim);
     graphics_draw_text(gctx, brief, font_tiny,
-                       GRect(174, 14, 22, 14),
+                       GRect(174, 11, 22, 18),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   }
 }
