@@ -750,7 +750,8 @@ static uint16_t menu_num_rows(MenuLayer *ml, uint16_t section, void *ctx) {
 }
 
 static int16_t menu_cell_height(MenuLayer *ml, MenuIndex *idx, void *ctx) {
-  return 54;
+  // 40px rows → all 5 timers visible simultaneously without scrolling
+  return 40;
 }
 
 static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
@@ -761,6 +762,7 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
 
   GRect bounds  = layer_get_bounds(cell_layer);
   bool selected = menu_layer_is_index_selected(s_menu_layer, idx);
+  int mid_y     = bounds.size.h / 2;  // vertical centre = 20
 
   GColor bg  = selected ? PBL_IF_COLOR_ELSE(GColorCobaltBlue, GColorBlack) : GColorWhite;
   GColor fg  = selected ? GColorWhite : GColorBlack;
@@ -769,67 +771,68 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
   graphics_context_set_fill_color(gctx, bg);
   graphics_fill_rect(gctx, bounds, 0, GCornerNone);
 
-  GFont font_big = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
-  GFont font_sm  = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  GFont font_main = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  GFont font_tiny = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 
-  // Timer name — full width, dominant
-  graphics_context_set_text_color(gctx, fg);
-  graphics_draw_text(gctx, cfg->name, font_big,
-                     GRect(6, 4, bounds.size.w - 12, 28),
+  // ── Name (left, large) ──────────────────────────────────────
+  graphics_context_set_text_color(gctx, cfg->configured ? fg : dim);
+  graphics_draw_text(gctx, cfg->name, font_main,
+                     GRect(4, 6, 76, 28),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  // Status row: icon at left, text to the right
-  int icon_x = 6, icon_y = 36;   // 14×14 icon inside the bottom 18px
-  char status[40] = "";
-
+  // ── State icon (centred at x=89, y=mid_y) ────────────────────
+  // Icon area: x=82 to x=96 (14px), vertically centred
   if (!cfg->configured) {
-    // Hollow circle = "needs setup"
+    // Hollow circle = needs setup
     graphics_context_set_stroke_color(gctx, dim);
     graphics_context_set_stroke_width(gctx, 2);
-    graphics_draw_circle(gctx, GPoint(icon_x + 7, icon_y + 7), 7);
+    graphics_draw_circle(gctx, GPoint(89, mid_y), 6);
     graphics_context_set_stroke_width(gctx, 1);
-    graphics_context_set_text_color(gctx, dim);
-    snprintf(status, sizeof(status), "Not set up — press SELECT");
   } else if (state->running) {
-    // Filled play triangle in timer color (white when selected)
-    GColor icon_col = selected ? GColorWhite : PBL_IF_COLOR_ELSE(s_timer_colors[i], GColorBlack);
-    graphics_context_set_fill_color(gctx, icon_col);
+    // Filled right-pointing triangle in timer colour
+    GColor ic = selected ? GColorWhite : PBL_IF_COLOR_ELSE(s_timer_colors[i], GColorBlack);
+    graphics_context_set_fill_color(gctx, ic);
     GPoint pts[3] = {
-      GPoint(icon_x,      icon_y),
-      GPoint(icon_x,      icon_y + 14),
-      GPoint(icon_x + 11, icon_y + 7),
+      GPoint(82, mid_y - 7),
+      GPoint(82, mid_y + 7),
+      GPoint(96, mid_y),
     };
     GPathInfo pi = {.num_points = 3, .points = pts};
     GPath *play = gpath_create(&pi);
     gpath_draw_filled(gctx, play);
     gpath_destroy(play);
-    char countdown[16];
-    format_countdown(countdown, sizeof(countdown), state->remaining_secs);
-    char brief[12];
-    switch (cfg->interval_type) {
-      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");         break;
-      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dmin", cfg->interval_value); break;
-      default:               snprintf(brief, sizeof(brief), "%dsec", cfg->interval_value); break;
-    }
-    snprintf(status, sizeof(status), "%s  %s", countdown, brief);
-    graphics_context_set_text_color(gctx, fg);
   } else {
     // Filled square = stopped
     graphics_context_set_fill_color(gctx, dim);
-    graphics_fill_rect(gctx, GRect(icon_x + 1, icon_y + 1, 12, 12), 0, GCornerNone);
-    char brief[12];
-    switch (cfg->interval_type) {
-      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");         break;
-      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dmin", cfg->interval_value); break;
-      default:               snprintf(brief, sizeof(brief), "%dsec", cfg->interval_value); break;
-    }
-    snprintf(status, sizeof(status), "--:--  %s", brief);
-    graphics_context_set_text_color(gctx, dim);
+    graphics_fill_rect(gctx, GRect(83, mid_y - 6, 12, 12), 0, GCornerNone);
   }
 
-  graphics_draw_text(gctx, status, font_sm,
-                     GRect(24, 35, bounds.size.w - 28, 17),
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+  // ── Countdown (centre-right, large) ─────────────────────────
+  if (cfg->configured) {
+    char countdown[16];
+    if (state->running) {
+      format_countdown(countdown, sizeof(countdown), state->remaining_secs);
+      graphics_context_set_text_color(gctx, fg);
+    } else {
+      snprintf(countdown, sizeof(countdown), "--:--");
+      graphics_context_set_text_color(gctx, dim);
+    }
+    graphics_draw_text(gctx, countdown, font_main,
+                       GRect(100, 6, 60, 28),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+    // ── Interval brief (far right, small) ───────────────────────
+    char brief[8];
+    switch (cfg->interval_type) {
+      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");             break;
+      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dm", cfg->interval_value); break;
+      default:               snprintf(brief, sizeof(brief), "%ds", cfg->interval_value); break;
+    }
+    graphics_context_set_text_color(gctx, dim);
+    graphics_draw_text(gctx, brief, font_tiny,
+                       GRect(164, 14, 32, 14),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+  }
 }
 
 static void menu_select(MenuLayer *ml, MenuIndex *idx, void *ctx) {
