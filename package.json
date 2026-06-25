@@ -1,0 +1,22 @@
+{
+  "name": "larp-timer",
+  "author": "thegogz",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "LARP Timer",
+    "uuid": "d0a0685e-d7c8-4c55-a572-39c0e924665b",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": ["emery"],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [],
+    "resources": {
+      "media": []
+    }
+  }
+}
