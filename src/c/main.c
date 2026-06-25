@@ -694,6 +694,13 @@ static void menu_select(MenuLayer *ml, MenuIndex *idx, void *ctx) {
   open_action_menu(idx->row);
 }
 
+static void menu_long_select(MenuLayer *ml, MenuIndex *idx, void *ctx) {
+  toggle_timer(idx->row);
+  // Short double-pulse confirms the long-press toggle
+  VibePattern confirm = {.durations = (uint32_t[]){50, 80, 50}, .num_segments = 3};
+  vibes_enqueue_custom_pattern(confirm);
+}
+
 // ============================================================================
 // MAIN WINDOW — TAP INDICATOR LAYER
 // ============================================================================
@@ -728,7 +735,8 @@ static void main_window_load(Window *window) {
     .get_num_rows   = menu_num_rows,
     .get_cell_height = menu_cell_height,
     .draw_row       = menu_draw_row,
-    .select_click   = menu_select,
+    .select_click      = menu_select,
+    .select_long_click = menu_long_select,
   });
   menu_layer_set_click_config_onto_window(s_menu_layer, window);
   menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);

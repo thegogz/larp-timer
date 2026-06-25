@@ -43,6 +43,7 @@ Fully functional watchapp targeting the **Pebble Time 2 (Emery)** platform, buil
 **Button navigation:**
 - **UP / DOWN** — scroll through T1–T5
 - **SELECT** — action menu: Start/Stop or Configure
+- **Long-press SELECT** — instantly toggles the highlighted timer (skip the menu)
 - **BACK** — exit / dismiss flash overlay
 
 **Configuration wizard** (SELECT → Configure):
