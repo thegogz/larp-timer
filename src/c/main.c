@@ -5,7 +5,7 @@
 // ============================================================================
 
 #define MAX_TIMERS       5
-#define TIMER_NAME_LEN   4
+#define TIMER_NAME_LEN   9   // 8 chars + null
 #define TAP_WINDOW_MS    2000
 #define FLASH_DURATION_MS 2000
 #define TICK_MS          1000
@@ -78,6 +78,15 @@ static const char *s_vibe_symbols[NUM_VIBE_TYPES] = {
   ".", "..", "...", "-", "-.", ".-.",
 };
 
+// Preset names for the config name-picker
+static const char * const s_preset_names[] = {
+  "Spell",  "Potion", "Shield", "Stun",   "Heal",
+  "Ward",   "Rage",   "Curse",  "Trap",   "Move",
+  "Burn",   "Freeze", "Drain",  "Boost",  "Timer",
+  "T1",     "T2",     "T3",     "T4",     "T5",
+};
+#define NUM_PRESET_NAMES 20
+
 // Per-timer flash colors (color platforms)
 static const GColor s_timer_colors[MAX_TIMERS] = {
   {.argb = 0b11110000},  // Red     (~GColorRed)
@@ -124,6 +133,11 @@ static NumberWindow   *s_cfg_num_window  = NULL;
 static Window         *s_cfg_vibe_window = NULL;
 static SimpleMenuLayer *s_cfg_vibe_menu  = NULL;
 
+static Window          *s_cfg_name_window = NULL;
+static SimpleMenuLayer *s_cfg_name_menu   = NULL;
+static SimpleMenuItem   s_cfg_name_items[NUM_PRESET_NAMES];
+static SimpleMenuSection s_cfg_name_section;
+
 // Tap indicator string and layer (shown on main screen)
 static char  s_tap_label[16]         = "";
 static Layer *s_tap_indicator_layer  = NULL;
@@ -133,6 +147,7 @@ static Layer *s_tap_indicator_layer  = NULL;
 // ============================================================================
 
 static void tick_callback(void *data);
+static void push_config_name(void);
 static void push_config_type(void);
 static void push_config_vibe(void);
 
@@ -388,13 +403,13 @@ static void cfg_vibe_select(int index, void *ctx) {
   save_configs();
   vibes_short_pulse();
 
-  // Stack is: main → type → [number] → vibe (current)
-  // Pop vibe first, then number if present, then type → back to main
+  // Stack is: main → name → type → [number] → vibe (current)
   window_stack_pop(false);  // pop vibe
   if (s_cfg_work.interval_type != INTERVAL_HOURLY) {
     window_stack_pop(false);  // pop number window
   }
-  window_stack_pop(false);  // pop type window → back to main
+  window_stack_pop(false);  // pop type window
+  window_stack_pop(false);  // pop name window → back to main
 
   if (s_menu_layer) layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
 }
@@ -534,6 +549,56 @@ static void push_config_type(void) {
 }
 
 // ============================================================================
+// CONFIG — NAME SELECTION WINDOW
+// ============================================================================
+
+static void cfg_name_select(int index, void *ctx) {
+  snprintf(s_cfg_work.name, TIMER_NAME_LEN, "%s", s_preset_names[index]);
+  push_config_type();
+}
+
+static void cfg_name_window_load(Window *window) {
+  for (int i = 0; i < NUM_PRESET_NAMES; i++) {
+    s_cfg_name_items[i].title    = s_preset_names[i];
+    s_cfg_name_items[i].callback = cfg_name_select;
+  }
+  s_cfg_name_section.title     = "Timer Name";
+  s_cfg_name_section.items     = s_cfg_name_items;
+  s_cfg_name_section.num_items = NUM_PRESET_NAMES;
+
+  Layer *root   = window_get_root_layer(window);
+  GRect  bounds = layer_get_bounds(root);
+  s_cfg_name_menu = simple_menu_layer_create(bounds, window,
+                                              &s_cfg_name_section, 1, NULL);
+  // Pre-select current name if it matches a preset
+  MenuLayer *ml = simple_menu_layer_get_menu_layer(s_cfg_name_menu);
+  for (int i = 0; i < NUM_PRESET_NAMES; i++) {
+    if (strcmp(s_cfg_work.name, s_preset_names[i]) == 0) {
+      MenuIndex mi = {.section = 0, .row = (uint16_t)i};
+      menu_layer_set_selected_index(ml, mi, MenuRowAlignCenter, false);
+      break;
+    }
+  }
+  layer_add_child(root, simple_menu_layer_get_layer(s_cfg_name_menu));
+}
+
+static void cfg_name_window_unload(Window *window) {
+  simple_menu_layer_destroy(s_cfg_name_menu);
+  s_cfg_name_menu = NULL;
+  window_destroy(window);
+  s_cfg_name_window = NULL;
+}
+
+static void push_config_name(void) {
+  s_cfg_name_window = window_create();
+  window_set_window_handlers(s_cfg_name_window, (WindowHandlers){
+    .load   = cfg_name_window_load,
+    .unload = cfg_name_window_unload,
+  });
+  window_stack_push(s_cfg_name_window, true);
+}
+
+// ============================================================================
 // ACTION MENU (Start/Stop + Configure)
 // ============================================================================
 
@@ -546,7 +611,7 @@ static void action_configure(ActionMenu *am, const ActionMenuItem *item, void *c
   int idx = (int)(uintptr_t)action_menu_item_get_action_data(item);
   s_cfg_idx = idx;
   memcpy(&s_cfg_work, &s_timer_configs[idx], sizeof(TimerConfig));
-  push_config_type();
+  push_config_name();
 }
 
 static void action_menu_did_close(ActionMenu *am, const ActionMenuItem *item, void *ctx) {
@@ -640,16 +705,16 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
       PBL_IF_COLOR_ELSE(GColorBlack, GColorBlack));
   }
 
-  GFont font_name = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  GFont font_name = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
   GFont font_info = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 
-  // Timer name on the left
-  GRect name_rect = GRect(4, 4, 36, 26);
+  // Timer name on the left — 60px wide fits up to 6 chars at GOTHIC_18_BOLD
+  GRect name_rect = GRect(4, 4, 60, 20);
   graphics_draw_text(gctx, cfg->name, font_name, name_rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   // Running indicator dot (colored circle)
-  GPoint dot_center = GPoint(50, bounds.size.h / 2);
+  GPoint dot_center = GPoint(70, bounds.size.h / 2);
   if (state->running) {
 #ifdef PBL_COLOR
     graphics_context_set_fill_color(gctx, s_timer_colors[i]);
@@ -678,14 +743,14 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
     format_interval(line2, sizeof(line2), i);
   }
 
-  int left_offset = 62;
+  int left_offset = 80;
   int right_width = bounds.size.w - left_offset - 4;
 
   GRect l1_rect = GRect(left_offset, 2, right_width, 20);
   graphics_draw_text(gctx, line1, font_name, l1_rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  GRect l2_rect = GRect(left_offset, 26, right_width, 16);
+  GRect l2_rect = GRect(left_offset, 24, right_width, 18);
   graphics_draw_text(gctx, line2, font_info, l2_rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 }
