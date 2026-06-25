@@ -455,9 +455,10 @@ static void push_config_number(void) {
     min_val = 1; max_val = 120; step = 1;
     current = (s_cfg_work.interval_value > 0) ? s_cfg_work.interval_value : 5;
   } else {
-    label   = "Seconds (1-59)";
-    min_val = 1; max_val = 59; step = 1;
-    current = (s_cfg_work.interval_value > 0) ? s_cfg_work.interval_value : 10;
+    label   = "Seconds (10-60)";
+    min_val = 10; max_val = 60; step = 10;
+    current = (s_cfg_work.interval_value >= 10) ?
+              (s_cfg_work.interval_value / 10) * 10 : 10;
   }
 
   s_cfg_num_window = number_window_create(label,
@@ -497,7 +498,7 @@ static void cfg_type_window_load(Window *window) {
   s_cfg_type_items[1].callback = cfg_type_select;
 
   s_cfg_type_items[2].title    = "Every X Seconds";
-  s_cfg_type_items[2].subtitle = "1 - 59 seconds";
+  s_cfg_type_items[2].subtitle = "10 - 60 seconds";
   s_cfg_type_items[2].callback = cfg_type_select;
 
   s_cfg_type_section.title     = s_timer_configs[s_cfg_idx].name;
