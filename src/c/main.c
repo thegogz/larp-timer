@@ -771,40 +771,37 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
   graphics_context_set_fill_color(gctx, bg);
   graphics_fill_rect(gctx, bounds, 0, GCornerNone);
 
-  GFont font_main = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  GFont font_main = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
   GFont font_tiny = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 
   // ── Name (left, large) ──────────────────────────────────────
   graphics_context_set_text_color(gctx, cfg->configured ? fg : dim);
   graphics_draw_text(gctx, cfg->name, font_main,
-                     GRect(4, 6, 76, 28),
+                     GRect(4, 4, 84, 32),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  // ── State icon (centred at x=89, y=mid_y) ────────────────────
-  // Icon area: x=82 to x=96 (14px), vertically centred
+  // ── State icon (centred at x=97, y=mid_y) ────────────────────
+  // Icon area: x=90 to x=104 (14px), vertically centred
   if (!cfg->configured) {
-    // Hollow circle = needs setup
     graphics_context_set_stroke_color(gctx, dim);
     graphics_context_set_stroke_width(gctx, 2);
-    graphics_draw_circle(gctx, GPoint(89, mid_y), 6);
+    graphics_draw_circle(gctx, GPoint(97, mid_y), 6);
     graphics_context_set_stroke_width(gctx, 1);
   } else if (state->running) {
-    // Filled right-pointing triangle in timer colour
     GColor ic = selected ? GColorWhite : PBL_IF_COLOR_ELSE(s_timer_colors[i], GColorBlack);
     graphics_context_set_fill_color(gctx, ic);
     GPoint pts[3] = {
-      GPoint(82, mid_y - 7),
-      GPoint(82, mid_y + 7),
-      GPoint(96, mid_y),
+      GPoint(90, mid_y - 7),
+      GPoint(90, mid_y + 7),
+      GPoint(104, mid_y),
     };
     GPathInfo pi = {.num_points = 3, .points = pts};
     GPath *play = gpath_create(&pi);
     gpath_draw_filled(gctx, play);
     gpath_destroy(play);
   } else {
-    // Filled square = stopped
     graphics_context_set_fill_color(gctx, dim);
-    graphics_fill_rect(gctx, GRect(83, mid_y - 6, 12, 12), 0, GCornerNone);
+    graphics_fill_rect(gctx, GRect(91, mid_y - 6, 12, 12), 0, GCornerNone);
   }
 
   // ── Countdown (centre-right, large) ─────────────────────────
@@ -818,7 +815,7 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
       graphics_context_set_text_color(gctx, dim);
     }
     graphics_draw_text(gctx, countdown, font_main,
-                       GRect(100, 6, 60, 28),
+                       GRect(108, 4, 62, 32),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
     // ── Interval brief (far right, small) ───────────────────────
@@ -830,7 +827,7 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
     }
     graphics_context_set_text_color(gctx, dim);
     graphics_draw_text(gctx, brief, font_tiny,
-                       GRect(164, 14, 32, 14),
+                       GRect(174, 14, 22, 14),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   }
 }
