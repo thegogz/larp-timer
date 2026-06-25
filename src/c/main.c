@@ -121,9 +121,8 @@ static int        s_flash_idx       = -1;
 static Window         *s_main_window = NULL;
 static MenuLayer      *s_menu_layer  = NULL;
 
-// Config wizard state
-static int        s_cfg_idx     = 0;   // which timer being configured
-static TimerConfig s_cfg_work;         // working copy during config
+// Config state
+static int s_cfg_idx = 0;  // which timer is being configured
 
 static Window         *s_cfg_type_window = NULL;
 static SimpleMenuLayer *s_cfg_type_menu  = NULL;
@@ -147,6 +146,7 @@ static Layer *s_tap_indicator_layer  = NULL;
 // ============================================================================
 
 static void tick_callback(void *data);
+static void push_config_menu(int timer_idx);
 static void push_config_name(void);
 static void push_config_type(void);
 static void push_config_vibe(void);
@@ -268,10 +268,7 @@ static void stop_timer(int idx) {
 static void toggle_timer(int idx) {
   if (idx < 0 || idx >= MAX_TIMERS) return;
   if (!s_timer_configs[idx].configured) {
-    // Not configured — prompt config instead
-    s_cfg_idx = idx;
-    memcpy(&s_cfg_work, &s_timer_configs[idx], sizeof(TimerConfig));
-    push_config_type();
+    push_config_menu(idx);
     return;
   }
   if (s_timer_states[idx].running) {
@@ -397,21 +394,10 @@ static SimpleMenuItem s_cfg_vibe_items[NUM_VIBE_TYPES];
 static SimpleMenuSection s_cfg_vibe_section;
 
 static void cfg_vibe_select(int index, void *ctx) {
-  s_cfg_work.vibe_type = (uint8_t)index;
-  s_cfg_work.configured = true;
-  memcpy(&s_timer_configs[s_cfg_idx], &s_cfg_work, sizeof(TimerConfig));
+  s_timer_configs[s_cfg_idx].vibe_type = (uint8_t)index;
   save_configs();
   vibes_short_pulse();
-
-  // Stack is: main → name → type → [number] → vibe (current)
-  window_stack_pop(false);  // pop vibe
-  if (s_cfg_work.interval_type != INTERVAL_HOURLY) {
-    window_stack_pop(false);  // pop number window
-  }
-  window_stack_pop(false);  // pop type window
-  window_stack_pop(false);  // pop name window → back to main
-
-  if (s_menu_layer) layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
+  window_stack_pop(false);  // pop vibe → back to config menu
 }
 
 static void cfg_vibe_window_load(Window *window) {
@@ -428,11 +414,9 @@ static void cfg_vibe_window_load(Window *window) {
   GRect  bounds = layer_get_bounds(root);
   s_cfg_vibe_menu = simple_menu_layer_create(bounds, window,
                                               &s_cfg_vibe_section, 1, NULL);
-  // Pre-select current vibe
   MenuLayer *ml = simple_menu_layer_get_menu_layer(s_cfg_vibe_menu);
-  MenuIndex mi  = {.section = 0, .row = s_cfg_work.vibe_type};
+  MenuIndex mi  = {.section = 0, .row = s_timer_configs[s_cfg_idx].vibe_type};
   menu_layer_set_selected_index(ml, mi, MenuRowAlignCenter, false);
-
   layer_add_child(root, simple_menu_layer_get_layer(s_cfg_vibe_menu));
 }
 
@@ -457,28 +441,31 @@ static void push_config_vibe(void) {
 // ============================================================================
 
 static void cfg_num_selected(struct NumberWindow *nw, void *ctx) {
-  s_cfg_work.interval_value = (uint16_t)number_window_get_value(nw);
-  push_config_vibe();
+  s_timer_configs[s_cfg_idx].interval_value = (uint16_t)number_window_get_value(nw);
+  s_timer_configs[s_cfg_idx].configured = true;
+  save_configs();
+  vibes_short_pulse();
+  window_stack_pop(false);  // pop number
+  window_stack_pop(false);  // pop type → back to config menu
 }
 
 static void push_config_number(void) {
+  TimerConfig *cfg = &s_timer_configs[s_cfg_idx];
   const char *label;
   int32_t min_val, max_val, step, current;
 
-  if (s_cfg_work.interval_type == INTERVAL_MINUTES) {
+  if (cfg->interval_type == INTERVAL_MINUTES) {
     label   = "Minutes (1-120)";
     min_val = 1; max_val = 120; step = 1;
-    current = (s_cfg_work.interval_value > 0) ? s_cfg_work.interval_value : 5;
+    current = (cfg->interval_value > 0) ? cfg->interval_value : 5;
   } else {
     label   = "Seconds (10-60)";
     min_val = 10; max_val = 60; step = 10;
-    current = (s_cfg_work.interval_value >= 10) ?
-              (s_cfg_work.interval_value / 10) * 10 : 10;
+    current = (cfg->interval_value >= 10) ? (cfg->interval_value / 10) * 10 : 10;
   }
 
   s_cfg_num_window = number_window_create(label,
-    (NumberWindowCallbacks){ .selected = cfg_num_selected },
-    NULL);
+    (NumberWindowCallbacks){ .selected = cfg_num_selected }, NULL);
   number_window_set_min(s_cfg_num_window, min_val);
   number_window_set_max(s_cfg_num_window, max_val);
   number_window_set_step_size(s_cfg_num_window, step);
@@ -494,10 +481,13 @@ static SimpleMenuItem s_cfg_type_items[3];
 static SimpleMenuSection s_cfg_type_section;
 
 static void cfg_type_select(int index, void *ctx) {
-  s_cfg_work.interval_type = (uint8_t)index;
+  s_timer_configs[s_cfg_idx].interval_type = (uint8_t)index;
   if (index == INTERVAL_HOURLY) {
-    s_cfg_work.interval_value = 0;
-    push_config_vibe();
+    s_timer_configs[s_cfg_idx].interval_value = 0;
+    s_timer_configs[s_cfg_idx].configured = true;
+    save_configs();
+    vibes_short_pulse();
+    window_stack_pop(false);  // pop type → back to config menu
   } else {
     push_config_number();
   }
@@ -507,11 +497,9 @@ static void cfg_type_window_load(Window *window) {
   s_cfg_type_items[0].title    = "Hourly";
   s_cfg_type_items[0].subtitle = "Every 60 minutes";
   s_cfg_type_items[0].callback = cfg_type_select;
-
   s_cfg_type_items[1].title    = "Every X Minutes";
   s_cfg_type_items[1].subtitle = "1 - 120 minutes";
   s_cfg_type_items[1].callback = cfg_type_select;
-
   s_cfg_type_items[2].title    = "Every X Seconds";
   s_cfg_type_items[2].subtitle = "10 - 60 seconds";
   s_cfg_type_items[2].callback = cfg_type_select;
@@ -524,11 +512,9 @@ static void cfg_type_window_load(Window *window) {
   GRect  bounds = layer_get_bounds(root);
   s_cfg_type_menu = simple_menu_layer_create(bounds, window,
                                               &s_cfg_type_section, 1, NULL);
-  // Pre-select current type
   MenuLayer *ml = simple_menu_layer_get_menu_layer(s_cfg_type_menu);
-  MenuIndex mi  = {.section = 0, .row = s_cfg_work.interval_type};
+  MenuIndex mi  = {.section = 0, .row = s_timer_configs[s_cfg_idx].interval_type};
   menu_layer_set_selected_index(ml, mi, MenuRowAlignCenter, false);
-
   layer_add_child(root, simple_menu_layer_get_layer(s_cfg_type_menu));
 }
 
@@ -553,8 +539,10 @@ static void push_config_type(void) {
 // ============================================================================
 
 static void cfg_name_select(int index, void *ctx) {
-  snprintf(s_cfg_work.name, TIMER_NAME_LEN, "%s", s_preset_names[index]);
-  push_config_type();
+  snprintf(s_timer_configs[s_cfg_idx].name, TIMER_NAME_LEN, "%s", s_preset_names[index]);
+  save_configs();
+  vibes_short_pulse();
+  window_stack_pop(false);  // pop name → back to config menu
 }
 
 static void cfg_name_window_load(Window *window) {
@@ -570,10 +558,9 @@ static void cfg_name_window_load(Window *window) {
   GRect  bounds = layer_get_bounds(root);
   s_cfg_name_menu = simple_menu_layer_create(bounds, window,
                                               &s_cfg_name_section, 1, NULL);
-  // Pre-select current name if it matches a preset
   MenuLayer *ml = simple_menu_layer_get_menu_layer(s_cfg_name_menu);
   for (int i = 0; i < NUM_PRESET_NAMES; i++) {
-    if (strcmp(s_cfg_work.name, s_preset_names[i]) == 0) {
+    if (strcmp(s_timer_configs[s_cfg_idx].name, s_preset_names[i]) == 0) {
       MenuIndex mi = {.section = 0, .row = (uint16_t)i};
       menu_layer_set_selected_index(ml, mi, MenuRowAlignCenter, false);
       break;
@@ -599,6 +586,88 @@ static void push_config_name(void) {
 }
 
 // ============================================================================
+// CONFIG — EDIT MENU  (Name / Time / Vibration independently)
+// ============================================================================
+
+static Window          *s_cfg_edit_window = NULL;
+static SimpleMenuLayer *s_cfg_edit_menu   = NULL;
+static SimpleMenuItem   s_cfg_edit_items[3];
+static SimpleMenuSection s_cfg_edit_section;
+static char s_cfg_edit_sub_time[32];
+
+static void cfg_edit_update_subtitles(void) {
+  TimerConfig *cfg = &s_timer_configs[s_cfg_idx];
+  switch (cfg->interval_type) {
+    case INTERVAL_HOURLY:
+      snprintf(s_cfg_edit_sub_time, sizeof(s_cfg_edit_sub_time), "Hourly");
+      break;
+    case INTERVAL_MINUTES:
+      snprintf(s_cfg_edit_sub_time, sizeof(s_cfg_edit_sub_time), "Every %d min", cfg->interval_value);
+      break;
+    default:
+      snprintf(s_cfg_edit_sub_time, sizeof(s_cfg_edit_sub_time), "Every %d sec", cfg->interval_value);
+      break;
+  }
+}
+
+static void cfg_edit_item_selected(int index, void *ctx) {
+  switch (index) {
+    case 0: push_config_name(); break;
+    case 1: push_config_type(); break;
+    case 2: push_config_vibe(); break;
+  }
+}
+
+static void cfg_edit_window_appear(Window *window) {
+  cfg_edit_update_subtitles();
+  if (s_cfg_edit_menu) layer_mark_dirty(simple_menu_layer_get_layer(s_cfg_edit_menu));
+  if (s_menu_layer)    layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
+}
+
+static void cfg_edit_window_load(Window *window) {
+  cfg_edit_update_subtitles();
+
+  s_cfg_edit_items[0].title    = "Name";
+  s_cfg_edit_items[0].subtitle = s_timer_configs[s_cfg_idx].name;
+  s_cfg_edit_items[0].callback = cfg_edit_item_selected;
+  s_cfg_edit_items[1].title    = "Time";
+  s_cfg_edit_items[1].subtitle = s_cfg_edit_sub_time;
+  s_cfg_edit_items[1].callback = cfg_edit_item_selected;
+  s_cfg_edit_items[2].title    = "Vibration";
+  s_cfg_edit_items[2].subtitle = s_vibe_names[s_timer_configs[s_cfg_idx].vibe_type];
+  s_cfg_edit_items[2].callback = cfg_edit_item_selected;
+
+  s_cfg_edit_section.title     = s_timer_configs[s_cfg_idx].name;
+  s_cfg_edit_section.items     = s_cfg_edit_items;
+  s_cfg_edit_section.num_items = 3;
+
+  Layer *root   = window_get_root_layer(window);
+  GRect  bounds = layer_get_bounds(root);
+  s_cfg_edit_menu = simple_menu_layer_create(bounds, window,
+                                              &s_cfg_edit_section, 1, NULL);
+  layer_add_child(root, simple_menu_layer_get_layer(s_cfg_edit_menu));
+}
+
+static void cfg_edit_window_unload(Window *window) {
+  simple_menu_layer_destroy(s_cfg_edit_menu);
+  s_cfg_edit_menu = NULL;
+  window_destroy(window);
+  s_cfg_edit_window = NULL;
+  if (s_menu_layer) layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
+}
+
+static void push_config_menu(int timer_idx) {
+  s_cfg_idx = timer_idx;
+  s_cfg_edit_window = window_create();
+  window_set_window_handlers(s_cfg_edit_window, (WindowHandlers){
+    .load   = cfg_edit_window_load,
+    .appear = cfg_edit_window_appear,
+    .unload = cfg_edit_window_unload,
+  });
+  window_stack_push(s_cfg_edit_window, true);
+}
+
+// ============================================================================
 // ACTION MENU (Start/Stop + Configure)
 // ============================================================================
 
@@ -609,9 +678,7 @@ static void action_start_stop(ActionMenu *am, const ActionMenuItem *item, void *
 
 static void action_configure(ActionMenu *am, const ActionMenuItem *item, void *ctx) {
   int idx = (int)(uintptr_t)action_menu_item_get_action_data(item);
-  s_cfg_idx = idx;
-  memcpy(&s_cfg_work, &s_timer_configs[idx], sizeof(TimerConfig));
-  push_config_name();
+  push_config_menu(idx);
 }
 
 static void action_menu_did_close(ActionMenu *am, const ActionMenuItem *item, void *ctx) {
@@ -683,7 +750,7 @@ static uint16_t menu_num_rows(MenuLayer *ml, uint16_t section, void *ctx) {
 }
 
 static int16_t menu_cell_height(MenuLayer *ml, MenuIndex *idx, void *ctx) {
-  return 44;
+  return 54;
 }
 
 static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
@@ -692,66 +759,76 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
   TimerConfig *cfg   = &s_timer_configs[i];
   TimerState  *state = &s_timer_states[i];
 
-  GRect bounds = layer_get_bounds(cell_layer);
+  GRect bounds  = layer_get_bounds(cell_layer);
   bool selected = menu_layer_is_index_selected(s_menu_layer, idx);
 
-  // Background
-  if (selected) {
-    graphics_context_set_fill_color(gctx, PBL_IF_COLOR_ELSE(GColorCobaltBlue, GColorBlack));
-    graphics_fill_rect(gctx, bounds, 0, GCornerNone);
-    graphics_context_set_text_color(gctx, GColorWhite);
-  } else {
-    graphics_context_set_text_color(gctx,
-      PBL_IF_COLOR_ELSE(GColorBlack, GColorBlack));
-  }
+  GColor bg  = selected ? PBL_IF_COLOR_ELSE(GColorCobaltBlue, GColorBlack) : GColorWhite;
+  GColor fg  = selected ? GColorWhite : GColorBlack;
+  GColor dim = selected ? GColorWhite : PBL_IF_COLOR_ELSE(GColorDarkGray, GColorBlack);
 
-  GFont font_name = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  GFont font_info = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  graphics_context_set_fill_color(gctx, bg);
+  graphics_fill_rect(gctx, bounds, 0, GCornerNone);
 
-  // Timer name on the left — 60px wide fits up to 6 chars at GOTHIC_18_BOLD
-  GRect name_rect = GRect(4, 4, 60, 20);
-  graphics_draw_text(gctx, cfg->name, font_name, name_rect,
+  GFont font_big = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  GFont font_sm  = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+
+  // Timer name — full width, dominant
+  graphics_context_set_text_color(gctx, fg);
+  graphics_draw_text(gctx, cfg->name, font_big,
+                     GRect(6, 4, bounds.size.w - 12, 28),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  // Running indicator dot (colored circle)
-  GPoint dot_center = GPoint(70, bounds.size.h / 2);
-  if (state->running) {
-#ifdef PBL_COLOR
-    graphics_context_set_fill_color(gctx, s_timer_colors[i]);
-#else
-    graphics_context_set_fill_color(gctx, selected ? GColorWhite : GColorBlack);
-#endif
-    graphics_fill_circle(gctx, dot_center, 6);
-  } else {
-    graphics_context_set_stroke_color(gctx,
-      selected ? GColorWhite : PBL_IF_COLOR_ELSE(GColorDarkGray, GColorBlack));
-    graphics_draw_circle(gctx, dot_center, 6);
-  }
-
-  // Countdown / status text (right portion)
-  char line1[24] = "";
-  char line2[32] = "";
+  // Status row: icon at left, text to the right
+  int icon_x = 6, icon_y = 36;   // 14×14 icon inside the bottom 18px
+  char status[40] = "";
 
   if (!cfg->configured) {
-    snprintf(line1, sizeof(line1), "Not configured");
-    snprintf(line2, sizeof(line2), "Press SELECT to set up");
+    // Hollow circle = "needs setup"
+    graphics_context_set_stroke_color(gctx, dim);
+    graphics_context_set_stroke_width(gctx, 2);
+    graphics_draw_circle(gctx, GPoint(icon_x + 7, icon_y + 7), 7);
+    graphics_context_set_stroke_width(gctx, 1);
+    graphics_context_set_text_color(gctx, dim);
+    snprintf(status, sizeof(status), "Not set up — press SELECT");
   } else if (state->running) {
-    format_countdown(line1, sizeof(line1), state->remaining_secs);
-    format_interval(line2, sizeof(line2), i);
+    // Filled play triangle in timer color (white when selected)
+    GColor icon_col = selected ? GColorWhite : PBL_IF_COLOR_ELSE(s_timer_colors[i], GColorBlack);
+    graphics_context_set_fill_color(gctx, icon_col);
+    GPoint pts[3] = {
+      GPoint(icon_x,      icon_y),
+      GPoint(icon_x,      icon_y + 14),
+      GPoint(icon_x + 11, icon_y + 7),
+    };
+    GPathInfo pi = {.num_points = 3, .points = pts};
+    GPath *play = gpath_create(&pi);
+    gpath_draw_filled(gctx, play);
+    gpath_destroy(play);
+    char countdown[16];
+    format_countdown(countdown, sizeof(countdown), state->remaining_secs);
+    char brief[12];
+    switch (cfg->interval_type) {
+      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");         break;
+      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dmin", cfg->interval_value); break;
+      default:               snprintf(brief, sizeof(brief), "%dsec", cfg->interval_value); break;
+    }
+    snprintf(status, sizeof(status), "%s  %s", countdown, brief);
+    graphics_context_set_text_color(gctx, fg);
   } else {
-    snprintf(line1, sizeof(line1), "Stopped");
-    format_interval(line2, sizeof(line2), i);
+    // Filled square = stopped
+    graphics_context_set_fill_color(gctx, dim);
+    graphics_fill_rect(gctx, GRect(icon_x + 1, icon_y + 1, 12, 12), 0, GCornerNone);
+    char brief[12];
+    switch (cfg->interval_type) {
+      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");         break;
+      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dmin", cfg->interval_value); break;
+      default:               snprintf(brief, sizeof(brief), "%dsec", cfg->interval_value); break;
+    }
+    snprintf(status, sizeof(status), "--:--  %s", brief);
+    graphics_context_set_text_color(gctx, dim);
   }
 
-  int left_offset = 80;
-  int right_width = bounds.size.w - left_offset - 4;
-
-  GRect l1_rect = GRect(left_offset, 2, right_width, 20);
-  graphics_draw_text(gctx, line1, font_name, l1_rect,
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-
-  GRect l2_rect = GRect(left_offset, 24, right_width, 18);
-  graphics_draw_text(gctx, line2, font_info, l2_rect,
+  graphics_draw_text(gctx, status, font_sm,
+                     GRect(24, 35, bounds.size.w - 28, 17),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 }
 
