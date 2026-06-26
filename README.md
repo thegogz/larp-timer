@@ -2,12 +2,14 @@
 
 A Pebble smartwatch app for tracking multiple simultaneous cooldown timers during live-action roleplay (LARP). Designed to let you manage spell durations, ability cooldowns, and in-game timing without breaking immersion — no need to look at your watch to know which timer fired.
 
+> **Note for contributors:** Update this README whenever you make changes that affect screenshots, features, or usage. Outdated docs are worse than no docs.
+
 ---
 
 ## Screenshots
 
-| Main Screen | Two Timers Running | Flash Alert | Tap Interface |
-|:-----------:|:------------------:|:-----------:|:-------------:|
+| Default Screen | Timers Running | Flash Alert | Wrist-Flick Tap |
+|:--------------:|:--------------:|:-----------:|:---------------:|
 | ![Main](screenshot_main.png) | ![Running](screenshot_running.png) | ![Flash](screenshot_flash.png) | ![Tap](screenshot_tap.png) |
 
 ---
@@ -18,7 +20,8 @@ Fully functional watchapp targeting the **Pebble Time 2 (Emery)** platform, buil
 
 ### Features
 
-**5 independent timers (T1–T5)**, each configurable with:
+**5 independent timers**, each configurable with:
+- **Custom name** — choose from 20 preset LARP-friendly labels (Spell, Potion, Shield, Stun, Heal, Ward, Rage, Curse, Trap, Move, Burn, Freeze, Drain, Boost, Timer, T1–T5)
 - **Interval type:** Hourly, every X minutes (1–120), or every X seconds (1–59)
 - **Vibration pattern:** 6 distinct patterns so you can identify which timer fired by feel alone
 
@@ -33,25 +36,33 @@ Fully functional watchapp targeting the **Pebble Time 2 (Emery)** platform, buil
 
 **When a timer fires:**
 - Vibrates with its unique pattern
-- Full-screen **colour-coded flash** for 2 seconds — each timer has its own colour (red/blue/green/yellow/magenta) with the timer name displayed large
+- Full-screen **colour-coded flash** for 2 seconds — each timer has its own colour (red/blue/green/yellow/magenta) with the timer name and interval displayed large
 
-**Tap-to-start interface (no-look operation):**
-1. Wrist tap → arms the selector, yellow `TAP: -` bar appears at screen bottom
-2. N more taps within 2 seconds → `TAP: T1`, `TAP: T2`, etc.
-3. After 2s timeout → starts or stops that timer automatically
+**Wrist-flick tap interface (no-look operation):**
+
+Start or stop a timer without looking at your watch:
+1. Flick your wrist → arms the selector, yellow **TAP: -** bar appears at screen bottom
+2. Each additional flick within 2 seconds increments the target: **TAP: T1**, **TAP: T2**, etc.
+3. After 2 s with no further flick → automatically starts or stops that timer
+
+This uses the accelerometer shock sensor, not a touchscreen — it works mid-combat with gloves on.
 
 **Button navigation:**
-- **UP / DOWN** — scroll through T1–T5
+- **UP / DOWN** — scroll through the timer list
 - **SELECT** — action menu: Start/Stop or Configure
-- **Long-press SELECT** — instantly toggles the highlighted timer (skip the menu)
+- **Long-press SELECT** — instantly toggles the highlighted timer (skips the action menu)
 - **BACK** — exit / dismiss flash overlay
 
-**Configuration wizard** (SELECT → Configure):
-1. Choose interval type
-2. Enter value via number wheel (UP/DOWN adjust, SELECT confirms)
-3. Pick vibration pattern — pre-selects your current setting
+**Configuration menu** (SELECT → Configure, or tap an unconfigured timer):
 
-Timer configs and last-selected row persist across app launches.
+Opens a persistent edit menu with three independently editable fields:
+1. **Name** — pick from the preset name list
+2. **Time** — choose interval type, then enter value via scroll wheel
+3. **Vibration** — pick pattern (pre-selects your current setting)
+
+Each field saves immediately on confirmation and returns to the edit menu, so you can change just the name or just the vibration without re-entering the other settings.
+
+Timer configs and last-selected row persist across app launches. Timer running state resets on exit (by design).
 
 ---
 
@@ -77,14 +88,12 @@ Requires [Pebble SDK 4.x](https://developer.rebble.io/developer.pebble.com/sdk/i
 
 ---
 
-## Intentions / Roadmap
+## Roadmap
 
-This app started as a practical tool for LARP gameplay and is being developed toward a more complete session companion. Planned additions:
-
-- **Custom timer names** — replace T1–T5 with player-chosen labels (e.g. "Spell", "Potion", "Stun") using a preset name picker
-- **More timers** — expand beyond 5 (up to the memory limit)
+Planned additions:
+- **More timers** — expand beyond 5 (dynamic add/delete, up to available heap)
 - **Start All / Stop All** — single action to launch or halt the full set
-- **Countdown warnings** — secondary vibration at a configurable "warning" threshold before the timer fires (e.g. buzz 30s before end of an effect)
+- **Countdown warnings** — secondary vibration at a configurable threshold before a timer fires (e.g. buzz 30 s before the effect ends)
 - **Per-timer colour customisation** — choose from the Pebble palette rather than using fixed defaults
 - **Session profiles** — save and restore named sets of timer configurations for different game systems or character builds
 - **Pebble app store release** — publish once the above QoL features are in place
@@ -95,7 +104,7 @@ This app started as a practical tool for LARP gameplay and is being developed to
 
 ```
 larp-timer/
-├── src/c/main.c        # Full app source (~800 lines, single file)
+├── src/c/main.c        # Full app source (~960 lines, single file)
 ├── package.json        # App manifest (UUID, display name, platform)
 ├── wscript             # Waf build script
 ├── build/

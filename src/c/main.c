@@ -167,7 +167,7 @@ static int32_t get_total_secs(int idx) {
 static void format_countdown(char *buf, size_t sz, int32_t secs) {
   if (secs < 0) secs = 0;
   if (secs >= 3600) {
-    snprintf(buf, sz, "%dh%02dm", (int)(secs / 3600), (int)((secs % 3600) / 60));
+    snprintf(buf, sz, "%d:%02d", (int)(secs / 3600), (int)((secs % 3600) / 60));
   } else {
     snprintf(buf, sz, "%02d:%02d", (int)(secs / 60), (int)(secs % 60));
   }
@@ -813,19 +813,24 @@ static void menu_draw_row(GContext *gctx, const Layer *cell_layer,
       graphics_context_set_text_color(gctx, dim);
     }
     graphics_draw_text(gctx, countdown, font_main,
-                       GRect(108, 4, 62, 32),
+                       GRect(108, 4, 58, 32),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
     // ── Interval brief (far right, small) ───────────────────────
     char brief[8];
     switch (cfg->interval_type) {
-      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");             break;
-      case INTERVAL_MINUTES: snprintf(brief, sizeof(brief), "%dm", cfg->interval_value); break;
-      default:               snprintf(brief, sizeof(brief), "%ds", cfg->interval_value); break;
+      case INTERVAL_HOURLY:  snprintf(brief, sizeof(brief), "1hr");                                break;
+      case INTERVAL_MINUTES:
+        if (cfg->interval_value >= 60)
+          snprintf(brief, sizeof(brief), "%dhr", cfg->interval_value / 60);
+        else
+          snprintf(brief, sizeof(brief), "%dm",  cfg->interval_value);
+        break;
+      default:               snprintf(brief, sizeof(brief), "%ds", cfg->interval_value);           break;
     }
     graphics_context_set_text_color(gctx, dim);
     graphics_draw_text(gctx, brief, font_tiny,
-                       GRect(174, 11, 22, 18),
+                       GRect(168, 11, 28, 18),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   }
 }
